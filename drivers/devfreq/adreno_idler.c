@@ -41,14 +41,12 @@
 static unsigned long idleworkload = 5000;
 module_param_named(adreno_idler_idleworkload, idleworkload, ulong, 0664);
 
-
 /* Number of events to wait before ramping down the frequency.
    The idlewait'th events before current one must be all idle before
    Adreno idler ramps down the frequency.
    This implementation is to prevent micro-lags on scrolling or playing games.
    Adreno idler will more actively try to ramp down the frequency
    if this is set to a lower value. */
-
 static unsigned int idlewait = 20;
 module_param_named(adreno_idler_idlewait, idlewait, uint, 0664);
 
@@ -60,14 +58,7 @@ module_param_named(adreno_idler_downdifferential, downdifferential, uint, 0664);
 static bool adreno_idler_active = true;
 module_param_named(adreno_idler_active, adreno_idler_active, bool, 0664);
 
-static inline int64_t get_time_inms(void) {
-	int64_t tinms;
-	struct timespec cur_time = current_kernel_time();
-	tinms  = cur_time.tv_sec  * MSEC_PER_SEC;
-	tinms += cur_time.tv_nsec / NSEC_PER_MSEC;
-	return tinms;
-}
-static int64_t idle_lasttime = 0;
+static unsigned int idlecount = 0;
 
 int adreno_idler(struct devfreq_dev_status stats, struct devfreq *devfreq,
 		 unsigned long *freq)
@@ -77,28 +68,21 @@ int adreno_idler(struct devfreq_dev_status stats, struct devfreq *devfreq,
 
 	if (stats.busy_time < idleworkload) {
 		/* busy_time >= idleworkload should be considered as a non-idle workload. */
-		if (!idle_lasttime)
-			idle_lasttime = get_time_inms();
+		idlecount++;
 		if (*freq == devfreq->profile->freq_table[devfreq->profile->max_state - 1]) {
 			/* Frequency is already at its lowest.
 			   No need to calculate things, so bail out. */
 			return 1;
 		}
-<<<<<<< HEAD
-		if (idle_lasttime + idlewaitms <= get_time_inms() &&
-		    stats.busy_time * 100 < stats.total_time * downdifferenctial) {
-=======
 		if (idlecount >= idlewait &&
 		    stats.busy_time * 100 < stats.total_time * downdifferential) {
->>>>>>> be4a73c... adreno_idler: fix typos :)
 			/* We are idle for (idlewait + 1)'th time! Ramp down the frequency now. */
 			*freq = devfreq->profile->freq_table[devfreq->profile->max_state - 1];
+			idlecount--;
 			return 1;
 		}
 	} else {
-
 		idlecount = 0;
-
 		/* Do not return 1 here and allow rest of the algorithm to
 		   figure out the appropriate frequency for current workload.
 		   It can even set it back to the lowest frequency. */
