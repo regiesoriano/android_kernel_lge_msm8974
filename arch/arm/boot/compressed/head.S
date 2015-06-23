@@ -17,9 +17,6 @@
 #include <asm/memory.h>
 #endif
 
-	.arch	armv7-a
-
->>>>>>> abe50ac... Kernel sublevel update: 3.4.0 to 3.4.107
 /*
  * Debugging stuff
  *
