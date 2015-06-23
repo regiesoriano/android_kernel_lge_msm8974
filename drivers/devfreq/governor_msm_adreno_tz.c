@@ -46,14 +46,15 @@ static DEFINE_SPINLOCK(tz_lock);
 
 #define TAG "msm_adreno_tz: "
 
-
+<<<<<<< HEAD
+=======
 static unsigned int tz_target = TARGET;
 static unsigned int tz_cap = CAP;
 
 /* Boolean to detect if pm has entered suspend mode */
 static bool suspended = false;
 
-
+>>>>>>> 838d4e6... GPU: Merge Adreno Idler 1.1 with all that needed.
 /* Trap into the TrustZone, and call funcs there. */
 static int __secure_tz_entry2(u32 cmd, u32 val1, u32 val2)
 {
@@ -89,7 +90,8 @@ static void _update_cutoff(struct devfreq_msm_adreno_tz_data *priv,
 	}
 }
 
-
+<<<<<<< HEAD
+=======
 #ifdef CONFIG_SIMPLE_GPU_ALGORITHM
 extern int simple_gpu_active;
 extern int simple_gpu_algorithm(int level,
@@ -102,6 +104,7 @@ extern int adreno_idler(struct devfreq_dev_status stats, struct devfreq *devfreq
 	 	 unsigned long *freq);
 #endif
 
+>>>>>>> 838d4e6... GPU: Merge Adreno Idler 1.1 with all that needed.
 static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 				u32 *flag)
 {
