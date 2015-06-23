@@ -326,7 +326,26 @@ static int pcc_r = 32768, pcc_g = 32768, pcc_b = 32768;
 static ssize_t mdss_get_rgb(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d %d %d\n", pcc_r, pcc_g, pcc_b);
+	u32 copyback = 0;
+	struct mdp_pcc_cfg_data pcc_cfg;
+
+	memset(&pcc_cfg, 0, sizeof(struct mdp_pcc_cfg_data));
+
+	pcc_cfg.block = MDP_LOGICAL_BLOCK_DISP_0;
+	pcc_cfg.ops = MDP_PP_OPS_READ;
+
+	mdss_mdp_pcc_config(&pcc_cfg, &copyback);
+
+	/* We disable pcc when using default values and reg
+	 * are zeroed on pp resume, so ignore empty values.
+	 */
+	if (pcc_cfg.r.r && pcc_cfg.g.g && pcc_cfg.b.b) {
+		pcc_r = pcc_cfg.r.r;
+		pcc_g = pcc_cfg.g.g;
+		pcc_b = pcc_cfg.b.b;
+	}
+
+	return scnprintf(buf, PAGE_SIZE, "%d %d %d\n", pcc_r, pcc_g, pcc_b);
 }
 
 /**
@@ -1259,6 +1278,7 @@ int mdss_fb_alloc_fb_ion_memory(struct msm_fb_data_type *mfd, size_t fb_size)
 		}
 	} else {
 		pr_err("No IOMMU Domain");
+		rc = -EINVAL;
 		goto fb_mmap_failed;
 
 	}
@@ -2007,6 +2027,9 @@ void mdss_fb_wait_for_fence(struct msm_sync_pt_data *sync_pt_data)
 	struct sync_fence *fences[MDP_MAX_FENCE_FD];
 	int fence_cnt;
 	int i, ret = 0;
+	unsigned long max_wait = msecs_to_jiffies(WAIT_MAX_FENCE_TIMEOUT);
+	unsigned long timeout = jiffies + max_wait;
+	long wait_ms, wait_jf;
 
 	pr_debug("%s: wait for fences\n", sync_pt_data->fence_name);
 
@@ -2024,15 +2047,41 @@ void mdss_fb_wait_for_fence(struct msm_sync_pt_data *sync_pt_data)
 
 	/* buf sync */
 	for (i = 0; i < fence_cnt && !ret; i++) {
-		ret = sync_fence_wait(fences[i],
-				WAIT_FENCE_FIRST_TIMEOUT);
+		wait_jf = timeout - jiffies;
+		wait_ms = jiffies_to_msecs(wait_jf);
+
+		/*
+		 * In this loop, if one of the previous fence took long
+		 * time, give a chance for the next fence to check if
+		 * fence is already signalled. If not signalled it breaks
+		 * in the final wait timeout.
+		 */
+		if (wait_jf < 0)
+			wait_ms = WAIT_MIN_FENCE_TIMEOUT;
+		else
+			wait_ms = min_t(long, WAIT_FENCE_FIRST_TIMEOUT,
+					wait_ms);
+
+		ret = sync_fence_wait(fences[i], wait_ms);
+
 		if (ret == -ETIME) {
+			wait_jf = timeout - jiffies;
+			wait_ms = jiffies_to_msecs(wait_jf);
+			if (wait_jf < 0)
+				break;
+			else
+				wait_ms = min_t(long, WAIT_FENCE_FINAL_TIMEOUT,
+						wait_ms);
+
 			pr_warn("%s: sync_fence_wait timed out! ",
 					sync_pt_data->fence_name);
-			pr_cont("Waiting %ld more seconds\n",
-					WAIT_FENCE_FINAL_TIMEOUT/MSEC_PER_SEC);
-			ret = sync_fence_wait(fences[i],
-					WAIT_FENCE_FINAL_TIMEOUT);
+			pr_cont("Waiting %ld.%ld more seconds\n",
+				(wait_ms/MSEC_PER_SEC), (wait_ms%MSEC_PER_SEC));
+
+			ret = sync_fence_wait(fences[i], wait_ms);
+
+			if (ret == -ETIME)
+				break;
 		}
 		sync_fence_put(fences[i]);
 	}
@@ -2179,7 +2228,7 @@ static int mdss_fb_wait_for_kickoff(struct msm_fb_data_type *mfd)
 	ret = wait_event_timeout(mfd->kickoff_wait_q,
 			(!atomic_read(&mfd->kickoff_pending) ||
 			 mfd->shutdown_pending),
-			msecs_to_jiffies(WAIT_DISP_OP_TIMEOUT / 2));
+			msecs_to_jiffies(WAIT_DISP_OP_TIMEOUT));
 	if (!ret) {
 		pr_err("wait for kickoff timeout %d pending=%d\n",
 				ret, atomic_read(&mfd->kickoff_pending));
